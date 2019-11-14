@@ -8,6 +8,10 @@ from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
 
+token.EXACT_TOKEN_NAMES = dict(
+    zip(token.EXACT_TOKEN_TYPES.values(), token.EXACT_TOKEN_TYPES.keys())
+)
+
 
 def require_tree(func):
     @wraps(func)
@@ -73,24 +77,82 @@ class TokenTransformer:
 
         importlib.reload(tokenize)
 
+    def _pattern_search(self):
+        patterns = {}
+        for name, member in inspect.getmembers(self):
+            if name.startswith("pattern_"):
+                token_names = (
+                    name.replace("pattern_", "", 1).upper().split("_")
+                )
+                token_types = tuple(
+                    self._get_type_from_name(token_name)
+                    for token_name in token_names
+                )
+                if any(token_type is None for token_type in token_types):
+                    raise ValueError(f"Unknown token for pattern '{name}'")
+                patterns[token_types] = member
+        return patterns
+
+    def _get_type_from_name(self, name):
+        if name in token.EXACT_TOKEN_NAMES:
+            return token.EXACT_TOKEN_NAMES[name]
+        elif hasattr(token, name):
+            return getattr(token, name)
+        else:
+            return None
+
+    def _get_type(self, stream_token):
+        if stream_token.string in token.EXACT_TOKEN_TYPES:
+            type = token.EXACT_TOKEN_TYPES[stream_token.string]
+        else:
+            type = stream_token.type
+        return type
+
     def transform(self, source):
         self._register_tokens()
+        patterns = self._pattern_search()
 
         readline = io.StringIO(source).readline
         stream_tokens = tuple(tokenize.generate_tokens(readline))
-        buffer = []
+        stream_tokens_buffer = []
 
         for stream_token in stream_tokens:
-            if stream_token.string in tokenize.EXACT_TOKEN_TYPES:
-                type = tokenize.EXACT_TOKEN_TYPES[stream_token.string]
-            else:
-                type = stream_token.type
-
-            name = tokenize.tok_name[type]
+            name = tokenize.tok_name[self._get_type(stream_token)]
             visitor = getattr(self, f"visit_{name.lower()}", self.dummy)
-            buffer.append(visitor(stream_token) or stream_token)
+            stream_tokens_buffer.append(visitor(stream_token) or stream_token)
 
-        return tokenize.untokenize(buffer)
+        stream_tokens = stream_tokens_buffer.copy()
+        stream_tokens_buffer.clear()
+
+        for pattern, visitor in patterns.items():
+            start_indexes, end_indexes = [], []
+            pattern_state = 0
+
+            for token_index, stream_token in enumerate(stream_tokens):
+                if pattern_state == len(pattern):
+                    pattern_state = 0
+                    end_indexes.append(token_index)
+                if self._get_type(stream_token) == pattern[pattern_state]:
+                    if pattern_state == 0:
+                        start_indexes.append(token_index)
+                    pattern_state += 1
+                elif pattern_state != 0:
+                    pattern_state = 0
+                    start_indexes.pop()
+            else:
+                if pattern_state != 0:
+                    start_indexes.pop()
+
+            patterns = [
+                slice(start, end)
+                for start, end in zip(start_indexes, end_indexes)
+            ]
+            for pattern in patterns:
+                matching_tokens = stream_tokens[pattern]
+                tokens = visitor(*matching_tokens) or matching_tokens
+                stream_tokens[pattern] = tokens
+
+        return tokenize.untokenize(stream_tokens)
 
     def dummy(self, token):
         # Implement dummy on subclasses for logging purposes or getting all tokens

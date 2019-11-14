@@ -80,3 +80,13 @@ def test_token_transformer_new_syntax():
     foo = FooTokenTransformer()
     new = foo.transform(REAL_CODE)
     assert new == EXPECTED_CODE
+
+
+def test_token_transformer_patternization():
+    class Foo(TokenTransformer):
+        def pattern_lsqb_number_colon_number_rsqb(self, *tokens):
+            _, n1, __, n2, ___ = tokens
+            return _, n1._replace(string="3"), __, n2, ___
+
+    foo = Foo()
+    assert "[3:10]" == foo.transform("[1:10]")
