@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-import pepgrave.context_resolver
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
 
 CODE = """

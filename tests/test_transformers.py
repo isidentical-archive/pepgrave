@@ -1,8 +1,13 @@
 import ast
+import tokenize
 
 import pytest
 
-from pepgrave.transformers import ASTTransformer, require_tree
+from pepgrave.transformers import (
+    ASTTransformer,
+    TokenTransformer,
+    require_tree,
+)
 
 
 @pytest.fixture
@@ -44,3 +49,34 @@ def test_insert_global(ast_transformer):
     ast_transformer.insert_global(my_constant)
 
     assert my_constant in ast_transformer.globals
+
+
+REAL_CODE = """
+class X:
+    if foo $ 1:
+        def baz():
+            pass
+"""
+
+EXPECTED_CODE = """
+class X:
+    if foo == 3:
+        def baz():
+            pass
+"""
+
+
+def test_token_transformer_new_syntax():
+    class FooTokenTransformer(TokenTransformer):
+        def visit_number(self, token):
+            return token._replace(string="3")
+
+        def visit_dolar(self, token):
+            return token._replace(string="==", type=tokenize.OP)
+
+        def register_dolar(self):
+            return "$"
+
+    foo = FooTokenTransformer()
+    new = foo.transform(REAL_CODE)
+    assert new == EXPECTED_CODE

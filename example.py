@@ -1,6 +1,6 @@
-import pepgrave
+from pepgrave.magic import Magic
 
-with pepgrave.Magic(313, "346"):
+with Magic(313, "346"):
     assert IV == 4
     print(XX)
 
