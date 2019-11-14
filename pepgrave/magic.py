@@ -1,9 +1,11 @@
 import ast
-from contextlib import ExitStack, suppress
+import tokenize
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass
 from typing import FrozenSet
 
-from pepgrave.flint import Flint
+from pepgrave import INTERNAL_MAGIC
+from pepgrave.flint import flint
 from pepgrave.pep import PEP
 
 
@@ -12,7 +14,7 @@ class Magic(ExitStack):
     peps: FrozenSet[PEP]
 
     def __init__(self, *peps):
-        self.peps = PEP.from_id_seq(peps)
+        self.peps = frozenset(PEP.from_id_seq(peps))
         super().__init__()
 
     def __enter__(self):
@@ -22,15 +24,24 @@ class Magic(ExitStack):
                 self.enter_context(suppress(exception))
 
 
+@contextmanager
+def disable():
+    yield
+
+
+def fix_file(f):
+    source = f.read()
+    tree = flint(source)
+    ast.fix_missing_locations(tree)
+    f.close()
+    return tree
+
+
 def __internal_magic():
     main = __import__("__main__")
-    flint = Flint()
-    with open(main.__file__) as f:
-        main_tree = ast.parse(f.read())
-    main_tree = flint.visit(main_tree)
-    ast.fix_missing_locations(main_tree)
+    main_tree = fix_file(open(main.__file__))
     exec(compile(main_tree, main.__file__, "exec"), main.__dict__)
-    exit()
 
 
-__internal_magic()
+if INTERNAL_MAGIC:
+    __internal_magic()

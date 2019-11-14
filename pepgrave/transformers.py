@@ -39,7 +39,7 @@ class ASTTransformer(ast.NodeTransformer):
         self.tree = tree
         self.resolver = ContextVisitor()
         self.resolver.visit(tree)
-        self.visit(tree)
+        return self.visit(tree)
 
     @property
     @require_tree

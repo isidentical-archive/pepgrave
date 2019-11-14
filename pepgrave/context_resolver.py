@@ -29,8 +29,8 @@ class PositionPair:
     end: int
 
     @classmethod
-    def from_node(cls, node):
-        return cls(start=node.lineno, end=node.end_lineno)
+    def from_node(cls, node, type="lineno"):
+        return cls(start=getattr(node, type), end=getattr(node, f"end_{type}"))
 
     def __sub__(self, other):
         start = self.start - other.start
