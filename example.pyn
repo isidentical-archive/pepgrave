@@ -18,6 +18,11 @@ with magic.Magic(245):
         pass
     print(Foo.__abstractmethods__)
 
+with magic.Magic(276):
+    for i in 3:
+        if i > 1:
+            print(i)
+
 try:
     assert XX == 4
 except:
