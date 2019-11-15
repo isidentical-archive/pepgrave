@@ -7,7 +7,11 @@ with magic.Magic(313):
 with magic.Magic(204):
     print([:5], "yaay!", "no more", range(5))
     assert [:5] == [0, 1, 2, 3, 4]
+    some_iterator = reversed([:3])
 
+with magic.Magic(212):
+    for i indexing e in some_iterator:
+        print(i, e)
 try:
     assert XX == 4
 except:

@@ -167,6 +167,9 @@ class TokenTransformer:
                 pattern.increase(offset)
                 matching_tokens = stream_tokens[pattern.s]
                 tokens = visitor(*matching_tokens) or matching_tokens
+                result = self.set_tokens(
+                    tokens, pattern.s, matching_tokens, stream_tokens
+                )
                 tokens, matching_tokens, stream_tokens = self.set_tokens(
                     tokens, pattern.s, matching_tokens, stream_tokens
                 )
@@ -185,7 +188,7 @@ class TokenTransformer:
             original_start.start[0] != original_end.end[0]
         ):
             # check if all the start tokens are in the sameline with their end token
-            return new_tokens
+            return new_tokens, matching_tokens, all_tokens
 
         start_difference = (
             original_start.start[0] - new_start.start[0],
@@ -207,7 +210,8 @@ class TokenTransformer:
                 token = self.increase(token, amount=new_token_diff, page=1)
             all_tokens_buffer.append(token)
 
-        return new_tokens_buffer, matching_tokens, all_tokens_buffer
+        return_value = new_tokens_buffer, matching_tokens, all_tokens_buffer
+        return return_value
 
     def increase(self, token, amount=1, page=0):
         # page 0 => line number
@@ -219,6 +223,11 @@ class TokenTransformer:
         end[page] += amount
 
         return token._replace(start=tuple(start), end=tuple(end))
+
+    def quick_tokenize(self, source):
+        return list(tokenize.generate_tokens(io.StringIO(source).readline))[
+            :-2
+        ]
 
     def dummy(self, token):
         # Implement dummy on subclasses for logging purposes or getting all tokens
