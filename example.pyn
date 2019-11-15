@@ -12,6 +12,12 @@ with magic.Magic(204):
 with magic.Magic(212):
     for i indexing e in some_iterator:
         print(i, e)
+
+with magic.Magic(245):
+    interface Foo:
+        pass
+    print(Foo.__abstractmethods__)
+
 try:
     assert XX == 4
 except:
