@@ -57,6 +57,18 @@ class ASTTransformer(ast.NodeTransformer):
         self.tree.body.insert(0, node)
 
 
+class Untokenizer(tokenize.Untokenizer):
+    def add_whitespace(self, start):
+        row, col = start
+        row_offset = row - self.prev_row
+        if row_offset > 0:
+            self.tokens.append("\\\n" * row_offset)
+            self.prev_col = 0
+        col_offset = col - self.prev_col
+        if col_offset > 0:
+            self.tokens.append(" " * col_offset)
+
+
 class TokenTransformer:
     def _next_token_slot(self):
         index = max(token.tok_name.keys(), default=0)
@@ -147,12 +159,59 @@ class TokenTransformer:
                 slice(start, end)
                 for start, end in zip(start_indexes, end_indexes)
             ]
+
             for pattern in patterns:
                 matching_tokens = stream_tokens[pattern]
                 tokens = visitor(*matching_tokens) or matching_tokens
+                tokens, matching_tokens, stream_tokens = self.set_tokens(
+                    tokens, pattern, matching_tokens, stream_tokens
+                )
                 stream_tokens[pattern] = tokens
 
+        tokenize.Untokenizer = Untokenizer
         return tokenize.untokenize(stream_tokens)
+
+    def set_tokens(self, new_tokens, pattern, matching_tokens, all_tokens):
+        new_start, new_end = new_tokens[0], new_tokens[-1]
+        original_start, original_end = matching_tokens[0], matching_tokens[-1]
+
+        if (new_start.start[0] != new_end.end[0]) or (
+            original_start.start[0] != original_end.end[0]
+        ):
+            # check if all the start tokens are in the sameline with their end token
+            return new_tokens
+
+        start_difference = (
+            original_start.start[0] - new_start.start[0],
+            original_start.start[1] - new_start.start[1],
+        )
+        new_tokens_buffer = []
+        for token in new_tokens:
+            for page, difference in enumerate(start_difference):
+                token = self.increase(token, amount=difference, page=page)
+            new_tokens_buffer.append(token)
+
+        new_token_diff = (
+            new_tokens_buffer[-1].end[1] - all_tokens[pattern.stop].start[1]
+        )
+
+        all_tokens_buffer = all_tokens[: pattern.stop]
+        for token in all_tokens[pattern.stop :]:
+            token = self.increase(token, amount=new_token_diff, page=1)
+            all_tokens_buffer.append(token)
+
+        return new_tokens_buffer, matching_tokens, all_tokens_buffer
+
+    def increase(self, token, amount=1, page=0):
+        # page 0 => line number
+        # page 1 => column offset
+
+        start, end = list(token.start), list(token.end)
+
+        start[page] += amount
+        end[page] += amount
+
+        return token._replace(start=tuple(start), end=tuple(end))
 
     def dummy(self, token):
         # Implement dummy on subclasses for logging purposes or getting all tokens

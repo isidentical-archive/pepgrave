@@ -1,8 +1,11 @@
 from pepgrave import magic
 
-with magic.Magic(313, 204):
+with magic.Magic(313):
     assert IV == 4
     print(XX)
+
+with magic.Magic(204):
+    assert [:5] == [0, 1, 2, 3, 4]
 
 try:
     assert XX == 4

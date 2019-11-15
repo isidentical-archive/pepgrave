@@ -1,7 +1,9 @@
 import ast
+import codecs
 import tokenize
 from dataclasses import dataclass
 
+from pepgrave import CODEC_REGISTER
 from pepgrave.context_resolver import PositionPair
 from pepgrave.pep import PEP
 from pepgrave.transformers import ASTTransformer, TokenTransformer
@@ -68,16 +70,31 @@ class _PatternFinder(ast.NodeVisitor):
         return result in ALLOWED_NAMES
 
 
-class FlintToken(ASTTransformer):
+class FlintToken(TokenTransformer):
+    # match;
+    # with Magic(<peps>)
+    # with magic.Magic(<peps>)
+    # with pepgrave.magic.Magic(<peps>)
+
     def transform(self, source):
         self.source = source
-        return super().transform(ast.parse(source))
+        super().transform(source)
+        return self.source
 
-    def fix(self, pep, node):
-        fixed = pep.resolver.transform(
-            ast.get_source_segment(node, self.source)
-        )
-        return ast.parse(fixed)
+    def catch(self, *tokens):
+        statement, *names, _, pep_number, __ = tokens
+        name = "".join(name.string for name in names)
+        if statement.string == "with" and name in ALLOWED_NAMES:
+            peps = PEP.from_id_seq((int(pep_number.string),))
+            for pep in peps:
+                if isinstance(pep.resolver, self.__class__.__bases__[0]):
+                    self.source = pep.resolver.transform(
+                        self.source
+                    )  # TO-DO: transform only with's body
+
+    pattern_name_name_lpar_number_rpar = catch
+    pattern_name_name_dot_name_lpar_number_rpar = catch
+    pattern_name_name_dot_name_dot_name_lpar_number_rpar = catch
 
 
 class FlintAST(ASTTransformer, _PatternFinder):
@@ -89,7 +106,30 @@ class FlintAST(ASTTransformer, _PatternFinder):
 def flint(source):
     token_transformer = FlintToken()
     ast_transformer = FlintAST()
-
     source = token_transformer.transform(source)
     tree = ast_transformer.transform(ast.parse(source))
+    ast.fix_missing_locations(tree)
     return tree
+
+
+def decode(input, encoding, errors="strict"):
+    if not isinstance(input, str):
+        input, _ = encoding.decode(input, errors=errors)
+
+    token_transformer = FlintToken()
+    result = token_transformer.transform(input)
+    return result, len(result)
+
+
+def search(name):
+    if "pepgrave" in name:
+        encoding = (
+            name.replace("pepgrave", "", 1).replace("-", "", 1) or "utf8"
+        )
+        encoding = codecs.lookup(encoding)
+
+        return codecs.CodecInfo(encode=encoding.encoding, decode=flint_decoder)
+
+
+if CODEC_REGISTER:
+    codecs.register(search)

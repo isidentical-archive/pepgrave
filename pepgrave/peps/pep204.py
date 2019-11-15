@@ -15,7 +15,7 @@ class PEP204Resolver(TokenTransformer):
     """
 
     def pattern_lsqb_colon_number_rsqb(self, _, __, finish, ___):
-        literal_repr = repr(list(range(finish)))
+        literal_repr = repr(list(range(int(finish.string))))
         return list(
             tokenize.generate_tokens(io.StringIO(literal_repr).readline)
-        )
+        )[:-1]
