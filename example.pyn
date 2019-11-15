@@ -5,6 +5,7 @@ with magic.Magic(313):
     print(XX)
 
 with magic.Magic(204):
+    print([:5], "yaay!", "no more", range(5))
     assert [:5] == [0, 1, 2, 3, 4]
 
 try:

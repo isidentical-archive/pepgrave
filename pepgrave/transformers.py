@@ -4,6 +4,7 @@ import inspect
 import io
 import token
 import tokenize
+from dataclasses import dataclass
 from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
@@ -11,6 +12,19 @@ from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
 token.EXACT_TOKEN_NAMES = dict(
     zip(token.EXACT_TOKEN_TYPES.values(), token.EXACT_TOKEN_TYPES.keys())
 )
+
+
+@dataclass
+class Slice:
+    s: slice
+
+    def __init__(self, *args):
+        self.s = slice(*args)
+
+    def increase(self, amount):
+        start = self.s.start + amount
+        stop = self.s.stop + amount
+        self.s = slice(start, stop)
 
 
 def require_tree(func):
@@ -55,18 +69,6 @@ class ASTTransformer(ast.NodeTransformer):
     def insert_global(self, node):
         ast.fix_missing_locations(node)
         self.tree.body.insert(0, node)
-
-
-class Untokenizer(tokenize.Untokenizer):
-    def add_whitespace(self, start):
-        row, col = start
-        row_offset = row - self.prev_row
-        if row_offset > 0:
-            self.tokens.append("\\\n" * row_offset)
-            self.prev_col = 0
-        col_offset = col - self.prev_col
-        if col_offset > 0:
-            self.tokens.append(" " * col_offset)
 
 
 class TokenTransformer:
@@ -156,20 +158,24 @@ class TokenTransformer:
                     start_indexes.pop()
 
             patterns = [
-                slice(start, end)
+                Slice(start, end)
                 for start, end in zip(start_indexes, end_indexes)
             ]
 
+            offset = 0
             for pattern in patterns:
-                matching_tokens = stream_tokens[pattern]
+                pattern.increase(offset)
+                matching_tokens = stream_tokens[pattern.s]
                 tokens = visitor(*matching_tokens) or matching_tokens
                 tokens, matching_tokens, stream_tokens = self.set_tokens(
-                    tokens, pattern, matching_tokens, stream_tokens
+                    tokens, pattern.s, matching_tokens, stream_tokens
                 )
-                stream_tokens[pattern] = tokens
+                if len(tokens) > len(matching_tokens):
+                    offset += len(tokens) - len(matching_tokens)
+                stream_tokens[pattern.s] = tokens
 
-        tokenize.Untokenizer = Untokenizer
-        return tokenize.untokenize(stream_tokens)
+        source = tokenize.untokenize(stream_tokens)
+        return source
 
     def set_tokens(self, new_tokens, pattern, matching_tokens, all_tokens):
         new_start, new_end = new_tokens[0], new_tokens[-1]
@@ -197,7 +203,8 @@ class TokenTransformer:
 
         all_tokens_buffer = all_tokens[: pattern.stop]
         for token in all_tokens[pattern.stop :]:
-            token = self.increase(token, amount=new_token_diff, page=1)
+            if token.start[0] == new_tokens_buffer[-1].end[0]:
+                token = self.increase(token, amount=new_token_diff, page=1)
             all_tokens_buffer.append(token)
 
         return new_tokens_buffer, matching_tokens, all_tokens_buffer

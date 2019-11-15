@@ -18,4 +18,4 @@ class PEP204Resolver(TokenTransformer):
         literal_repr = repr(list(range(int(finish.string))))
         return list(
             tokenize.generate_tokens(io.StringIO(literal_repr).readline)
-        )[:-1]
+        )[:-2]
