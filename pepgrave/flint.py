@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pepgrave import CODEC_REGISTER
 from pepgrave.context_resolver import PositionPair
 from pepgrave.pep import PEP
-from pepgrave.transformers import ASTTransformer, TokenTransformer
+from pepgrave.transformers import ASTTransformer, TokenTransformer, pattern
 
 ALLOWED_NAMES = {"Magic", "pepgrave.magic.Magic", "magic.Magic"}
 
@@ -81,7 +81,12 @@ class FlintToken(TokenTransformer):
         super().transform(source)
         return self.source
 
-    def catch(self, *tokens):
+    @pattern("name", "name", "lpar", "number", "rpar")
+    @pattern("name", "name", "dot", "name", "lpar", "number", "rpar")
+    @pattern(
+        "name", "name", "dot", "name", "dot", "name", "lpar", "number", "rpar"
+    )
+    def context_finder(self, *tokens):
         statement, *names, _, pep_number, __ = tokens
         name = "".join(name.string for name in names)
         if statement.string == "with" and name in ALLOWED_NAMES:
@@ -91,10 +96,6 @@ class FlintToken(TokenTransformer):
                     self.source = pep.resolver.transform(
                         self.source
                     )  # TO-DO: transform only with's body
-
-    pattern_name_name_lpar_number_rpar = catch
-    pattern_name_name_dot_name_lpar_number_rpar = catch
-    pattern_name_name_dot_name_dot_name_lpar_number_rpar = catch
 
 
 class FlintAST(ASTTransformer, _PatternFinder):

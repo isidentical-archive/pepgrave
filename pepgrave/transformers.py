@@ -14,6 +14,15 @@ token.EXACT_TOKEN_NAMES = dict(
 )
 
 
+def get_type_from_name(name):
+    if name in token.EXACT_TOKEN_NAMES:
+        return token.EXACT_TOKEN_NAMES[name]
+    elif hasattr(token, name):
+        return getattr(token, name)
+    else:
+        return None
+
+
 @dataclass
 class Slice:
     s: slice
@@ -71,6 +80,24 @@ class ASTTransformer(ast.NodeTransformer):
         self.tree.body.insert(0, node)
 
 
+def pattern(*pattern_tokens):
+    def wrapper(func):
+        tokens = tuple(
+            get_type_from_name(pattern_token.upper())
+            for pattern_token in pattern_tokens
+        )
+        if not all(tokens):
+            raise ValueError("Invalid token name in pattern.")
+
+        if hasattr(func, "patterns"):
+            func.patterns.append(tokens)
+        else:
+            func.patterns = [tokens]
+        return func
+
+    return wrapper
+
+
 class TokenTransformer:
     def _next_token_slot(self):
         index = max(token.tok_name.keys(), default=0)
@@ -94,26 +121,10 @@ class TokenTransformer:
     def _pattern_search(self):
         patterns = {}
         for name, member in inspect.getmembers(self):
-            if name.startswith("pattern_"):
-                token_names = (
-                    name.replace("pattern_", "", 1).upper().split("_")
-                )
-                token_types = tuple(
-                    self._get_type_from_name(token_name)
-                    for token_name in token_names
-                )
-                if any(token_type is None for token_type in token_types):
-                    raise ValueError(f"Unknown token for pattern '{name}'")
-                patterns[token_types] = member
+            if hasattr(member, "patterns"):
+                for pattern in member.patterns:
+                    patterns[pattern] = member
         return patterns
-
-    def _get_type_from_name(self, name):
-        if name in token.EXACT_TOKEN_NAMES:
-            return token.EXACT_TOKEN_NAMES[name]
-        elif hasattr(token, name):
-            return getattr(token, name)
-        else:
-            return None
 
     def _get_type(self, stream_token):
         if stream_token.string in token.EXACT_TOKEN_TYPES:

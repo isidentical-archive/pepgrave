@@ -1,10 +1,11 @@
-from pepgrave.transformers import TokenTransformer
+from pepgrave.transformers import TokenTransformer, pattern
 
 
 class PEP245Resolver(TokenTransformer):
     # interface ColorFishInterface
 
-    def pattern_name_name_colon(self, *tokens):
+    @pattern("name", "name", "colon")
+    def interface_transformer(self, *tokens):
         interface, class_name, _ = tokens
         if interface.string == "interface":
             return self.quick_tokenize(

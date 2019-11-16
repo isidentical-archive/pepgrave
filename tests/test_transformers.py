@@ -6,6 +6,7 @@ import pytest
 from pepgrave.transformers import (
     ASTTransformer,
     TokenTransformer,
+    pattern,
     require_tree,
 )
 
@@ -84,7 +85,8 @@ def test_token_transformer_new_syntax():
 
 def test_token_transformer_patternization():
     class Foo(TokenTransformer):
-        def pattern_lsqb_number_colon_number_rsqb(self, *tokens):
+        @pattern("lsqb", "number", "colon", "number", "rsqb")
+        def replace_to_threee(self, *tokens):
             _, n1, __, n2, ___ = tokens
             return _, n1._replace(string="3"), __, n2, ___
 
