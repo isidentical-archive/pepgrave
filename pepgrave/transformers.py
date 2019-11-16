@@ -2,6 +2,7 @@ import ast
 import importlib
 import inspect
 import io
+import re
 import token
 import tokenize
 from dataclasses import dataclass
@@ -9,18 +10,10 @@ from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
 
+WILDCARD_PREFIXES = {"?"}
 token.EXACT_TOKEN_NAMES = dict(
     zip(token.EXACT_TOKEN_TYPES.values(), token.EXACT_TOKEN_TYPES.keys())
 )
-
-
-def get_type_from_name(name):
-    if name in token.EXACT_TOKEN_NAMES:
-        return token.EXACT_TOKEN_NAMES[name]
-    elif hasattr(token, name):
-        return getattr(token, name)
-    else:
-        return None
 
 
 @dataclass
@@ -80,19 +73,35 @@ class ASTTransformer(ast.NodeTransformer):
         self.tree.body.insert(0, node)
 
 
+def get_type_from_name(name, use_prefixes=True):
+    if use_prefixes and name[0] in WILDCARD_PREFIXES:
+        prefix = name[0]
+        name = name[1:]
+    else:
+        prefix = ""
+
+    if name in token.EXACT_TOKEN_NAMES:
+        token_value = token.EXACT_TOKEN_NAMES[name]
+    elif hasattr(token, name):
+        token_value = getattr(token, name)
+    else:
+        raise ValueError("Invalid token name, {name}.")
+    return f"{prefix}{token_value}"
+
+
 def pattern(*pattern_tokens):
     def wrapper(func):
-        tokens = tuple(
+        pattern_template = tuple(
             get_type_from_name(pattern_token.upper())
             for pattern_token in pattern_tokens
         )
-        if not all(tokens):
+        if not all(pattern_template):
             raise ValueError("Invalid token name in pattern.")
 
         if hasattr(func, "patterns"):
-            func.patterns.append(tokens)
+            func.patterns.append(pattern_template)
         else:
-            func.patterns = [tokens]
+            func.patterns = [pattern_template]
         return func
 
     return wrapper
@@ -133,22 +142,7 @@ class TokenTransformer:
             type = stream_token.type
         return type
 
-    def transform(self, source):
-        self._register_tokens()
-        patterns = self._pattern_search()
-
-        readline = io.StringIO(source).readline
-        stream_tokens = tuple(tokenize.generate_tokens(readline))
-        stream_tokens_buffer = []
-
-        for stream_token in stream_tokens:
-            name = tokenize.tok_name[self._get_type(stream_token)]
-            visitor = getattr(self, f"visit_{name.lower()}", self.dummy)
-            stream_tokens_buffer.append(visitor(stream_token) or stream_token)
-
-        stream_tokens = stream_tokens_buffer.copy()
-        stream_tokens_buffer.clear()
-
+    def _pattern_transformer(self, patterns, stream_tokens):
         for pattern, visitor in patterns.items():
             start_indexes, end_indexes = [], []
             pattern_state = 0
@@ -157,7 +151,7 @@ class TokenTransformer:
                 if pattern_state == len(pattern):
                     pattern_state = 0
                     end_indexes.append(token_index)
-                if self._get_type(stream_token) == pattern[pattern_state]:
+                if self._get_type(stream_token) == int(pattern[pattern_state]):
                     if pattern_state == 0:
                         start_indexes.append(token_index)
                     pattern_state += 1
@@ -187,6 +181,25 @@ class TokenTransformer:
                 if len(tokens) > len(matching_tokens):
                     offset += len(tokens) - len(matching_tokens)
                 stream_tokens[pattern.s] = tokens
+        return stream_tokens
+
+    def transform(self, source):
+        self._register_tokens()
+        patterns = self._pattern_search()
+
+        readline = io.StringIO(source).readline
+        stream_tokens = tuple(tokenize.generate_tokens(readline))
+        stream_tokens_buffer = []
+
+        for stream_token in stream_tokens:
+            name = tokenize.tok_name[self._get_type(stream_token)]
+            visitor = getattr(self, f"visit_{name.lower()}", self.dummy)
+            stream_tokens_buffer.append(visitor(stream_token) or stream_token)
+
+        stream_tokens_buffer = self._pattern_transformer(
+            patterns, stream_tokens_buffer
+        )
+        stream_tokens = stream_tokens_buffer.copy()
 
         source = tokenize.untokenize(stream_tokens)
         return source
