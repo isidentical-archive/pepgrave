@@ -10,7 +10,6 @@ from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
 
-WILDCARD_PREFIXES = {"?"}
 token.EXACT_TOKEN_NAMES = dict(
     zip(token.EXACT_TOKEN_TYPES.values(), token.EXACT_TOKEN_TYPES.keys())
 )
@@ -27,6 +26,12 @@ class Slice:
         start = self.s.start + amount
         stop = self.s.stop + amount
         self.s = slice(start, stop)
+
+
+@dataclass(unsafe_hash=True)
+class TextStreamTokenPosition:
+    start: int
+    end: int
 
 
 def require_tree(func):
@@ -73,30 +78,47 @@ class ASTTransformer(ast.NodeTransformer):
         self.tree.body.insert(0, node)
 
 
-def get_type_from_name(name, use_prefixes=True):
-    if use_prefixes and name[0] in WILDCARD_PREFIXES:
-        prefix = name[0]
-        name = name[1:]
+def _clear_name(name):
+    if not name.isalnum():
+        return name[0], name[1:]
     else:
-        prefix = ""
+        return "", name
 
+
+def get_type_from_name(name):
+    prefix, name = _clear_name(name)
     if name in token.EXACT_TOKEN_NAMES:
-        token_value = token.EXACT_TOKEN_NAMES[name]
+        name = token.EXACT_TOKEN_NAMES[name]
     elif hasattr(token, name):
-        token_value = getattr(token, name)
+        name = getattr(token, name)
     else:
         raise ValueError("Invalid token name, {name}.")
-    return f"{prefix}{token_value}"
+    return f"{prefix}{name}"
 
 
 def pattern(*pattern_tokens):
     def wrapper(func):
         pattern_template = tuple(
-            get_type_from_name(pattern_token.upper())
+            _clear_name(pattern_token.upper())
             for pattern_token in pattern_tokens
         )
-        if not all(pattern_template):
+        if any(
+            pattern_part[1] not in token.tok_name.values()
+            for pattern_part in pattern_template
+        ):
             raise ValueError("Invalid token name in pattern.")
+
+        pattern_template_buffer = ""
+        for index, pattern_part in enumerate(pattern_template):
+            prefix, type_id = pattern_part
+            template = fr"{type_id}"
+            if index == 0:
+                template = fr"({template}){prefix}"
+            else:
+                template = fr"(\s{template}){prefix}"
+
+            pattern_template_buffer += template
+        pattern_template = re.compile(pattern_template_buffer)
 
         if hasattr(func, "patterns"):
             func.patterns.append(pattern_template)
@@ -142,6 +164,68 @@ class TokenTransformer:
             type = stream_token.type
         return type
 
+    def _slice_replace(self, visitor, pattern_slices, stream_tokens):
+        offset = 0
+        for pattern_slice in pattern_slices:
+            pattern_slice.increase(offset)
+            matching_tokens = stream_tokens[pattern_slice.s]
+            tokens = visitor(*matching_tokens) or matching_tokens
+            tokens, matching_tokens, stream_tokens = self.set_tokens(
+                tokens, pattern_slice.s, matching_tokens, stream_tokens
+            )
+            if len(tokens) > len(matching_tokens):
+                offset += len(tokens) - len(matching_tokens)
+            stream_tokens[pattern_slice.s] = tokens
+        return stream_tokens
+
+    def _pattern_transformer_regex(self, patterns, stream_tokens):
+        def finditer_overlapping(pattern, text):
+            for counter in range(len(text)):
+                if match := pattern.match(text, counter):
+                    yield match
+
+        def text_stream_searcher(start, end):
+            matchings = []
+            for (
+                stream_tokens_position,
+                index,
+            ) in stream_tokens_positions.items():
+                if (
+                    stream_tokens_position.start >= start
+                    and stream_tokens_position.end <= end
+                ):
+                    matchings.append(index)
+            return (
+                matchings[0],
+                matchings[-1] + 1,
+            )  # hacky thing that make this work, please fix it ASAP
+
+        stream_tokens_text = " ".join(
+            token.tok_name[self._get_type(stream_token)]
+            for stream_token in stream_tokens
+        )
+        stream_tokens_positions = {}
+
+        offset = 0
+        for index, stream_token_text in enumerate(stream_tokens_text.split()):
+            stream_token_text_length = len(stream_token_text)
+            stream_tokens_positions[
+                TextStreamTokenPosition(
+                    offset, offset + stream_token_text_length
+                )
+            ] = index
+            offset += stream_token_text_length + 1  # filler (\s)
+
+        for pattern, visitor in patterns.items():
+            slices = []
+            for match in finditer_overlapping(pattern, stream_tokens_text):
+                start_index, end_index = text_stream_searcher(*match.span())
+                slices.append(Slice(start_index, end_index))
+
+            stream_tokens = self._slice_replace(visitor, slices, stream_tokens)
+
+        return stream_tokens
+
     def _pattern_transformer(self, patterns, stream_tokens):
         for pattern, visitor in patterns.items():
             start_indexes, end_indexes = [], []
@@ -162,25 +246,13 @@ class TokenTransformer:
                 if pattern_state != 0:
                     start_indexes.pop()
 
-            patterns = [
+            slices = [
                 Slice(start, end)
                 for start, end in zip(start_indexes, end_indexes)
             ]
 
-            offset = 0
-            for pattern in patterns:
-                pattern.increase(offset)
-                matching_tokens = stream_tokens[pattern.s]
-                tokens = visitor(*matching_tokens) or matching_tokens
-                result = self.set_tokens(
-                    tokens, pattern.s, matching_tokens, stream_tokens
-                )
-                tokens, matching_tokens, stream_tokens = self.set_tokens(
-                    tokens, pattern.s, matching_tokens, stream_tokens
-                )
-                if len(tokens) > len(matching_tokens):
-                    offset += len(tokens) - len(matching_tokens)
-                stream_tokens[pattern.s] = tokens
+            stream_tokens = self._slice_replace(visitor, slices, stream_tokens)
+
         return stream_tokens
 
     def transform(self, source):
@@ -196,7 +268,7 @@ class TokenTransformer:
             visitor = getattr(self, f"visit_{name.lower()}", self.dummy)
             stream_tokens_buffer.append(visitor(stream_token) or stream_token)
 
-        stream_tokens_buffer = self._pattern_transformer(
+        stream_tokens_buffer = self._pattern_transformer_regex(
             patterns, stream_tokens_buffer
         )
         stream_tokens = stream_tokens_buffer.copy()

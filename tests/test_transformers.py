@@ -91,4 +91,20 @@ def test_token_transformer_patternization():
             return _, n1._replace(string="3"), __, n2, ___
 
     foo = Foo()
-    assert "[3:10]" == foo.transform("[1:10]")
+    assert foo.transform("[1:10]") == "[3:10]"
+
+
+def test_token_transformer_wildcarded_pattern():
+    class Foo(TokenTransformer):
+        @pattern("name", "*name", "newline")
+        def replace_all_names_with_foo_bar(self, *tokens):
+            name, *names, newline = tokens
+            names = [name._replace(string="foobar") for name in names]
+            return [name, *names, newline]
+
+    foo = Foo()
+    assert foo.transform("name1 name2 name3") == "name1 foobar foobar"
+    assert (
+        foo.transform("name1 name2 name3 name4 name5")
+        == "name1 foobar foobar foobar foobar"
+    )
