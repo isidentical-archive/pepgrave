@@ -91,6 +91,13 @@ def _clear_name(name):
         return "", name
 
 
+def _clear_name_by_prefix(name):
+    index = 0
+    while not (current := name[index]).isalpha():
+        index += 1
+    return name[:index], name[index:]
+
+
 def get_type_from_name(name):
     prefix, name = _clear_name(name)
     if name in token.EXACT_TOKEN_NAMES:
@@ -104,29 +111,16 @@ def get_type_from_name(name):
 
 def pattern(*pattern_tokens):
     def wrapper(func):
-        pattern_template = tuple(
-            _clear_name(pattern_token.upper())
-            for pattern_token in pattern_tokens
-        )
-        if any(
-            pattern_part[1] not in token.tok_name.values()
-            for pattern_part in pattern_template
-        ):
-            raise ValueError(
-                f"Invalid token name in pattern: {pattern_template}"
-            )
-
         pattern_template_buffer = ""
-        for index, pattern_part in enumerate(pattern_template):
-            prefix, type_id = pattern_part
-            template = fr"{type_id}"
+        for index, pattern_part in enumerate(pattern_tokens):
+            prefix, pattern_part = _clear_name_by_prefix(pattern_part)
             if index == 0:
-                template = fr"({template}){prefix}"
+                template = fr"({pattern_part}){prefix}"
             else:
-                template = fr"(\s{template}){prefix}"
+                template = fr"(\s{pattern_part}){prefix}"
 
             pattern_template_buffer += template
-        pattern_template = re.compile(pattern_template_buffer)
+        pattern_template = re.compile(pattern_template_buffer, re.I)
 
         if hasattr(func, "patterns"):
             func.patterns.append(pattern_template)
@@ -187,6 +181,12 @@ class TokenTransformer:
         return stream_tokens
 
     def _pattern_transformer_regex(self, patterns, stream_tokens):
+        def token_to_text(stream_tokens):
+            return " ".join(
+                token.tok_name[self._get_type(stream_token)]
+                for stream_token in stream_tokens
+            )
+
         def finditer_overlapping(pattern, text):
             for counter in range(len(text)):
                 if match := pattern.match(text, counter):
@@ -208,10 +208,7 @@ class TokenTransformer:
                 matchings[-1] + 1,
             )  # hacky thing that make this work, please fix it ASAP
 
-        stream_tokens_text = " ".join(
-            token.tok_name[self._get_type(stream_token)]
-            for stream_token in stream_tokens
-        )
+        stream_tokens_text = token_to_text(stream_tokens)
         stream_tokens_positions = {}
 
         offset = 0
@@ -226,11 +223,13 @@ class TokenTransformer:
 
         for pattern, visitor in patterns.items():
             slices = []
+            breakpoint()
             for match in finditer_overlapping(pattern, stream_tokens_text):
                 start_index, end_index = text_stream_searcher(*match.span())
                 slices.append(Slice(start_index, end_index))
 
             stream_tokens = self._slice_replace(visitor, slices, stream_tokens)
+            stream_tokens_text = token_to_text(stream_tokens)
 
         return stream_tokens
 

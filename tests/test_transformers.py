@@ -114,8 +114,6 @@ def test_token_transformer_regex_pattern():
     class Foo(TokenTransformer):
         @pattern("name", "{2}name", "newline")
         def replace_all_names_with_foo_bar(self, *tokens):
-            from pprint import pprint
-
             name, *names, newline = tokens
             names = [name._replace(string="foobar") for name in names]
             return [name, *names, newline]

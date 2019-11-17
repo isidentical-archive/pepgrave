@@ -87,10 +87,20 @@ class FlintToken(TokenTransformer):
         "name", "name", "dot", "name", "dot", "name", "lpar", "number", "rpar"
     )
     def context_finder(self, *tokens):
-        statement, *names, _, pep_number, __ = tokens
+        tokens = iter(tokens)
+        statement = next(tokens)
+        names = []
+        while current := next(tokens):
+            if self._get_type(current) == tokenize.LPAR:
+                break
+            else:
+                names.append(current)
+        *pep_numbers, _ = tokens
         name = "".join(name.string for name in names)
         if statement.string == "with" and name in ALLOWED_NAMES:
-            peps = PEP.from_id_seq((int(pep_number.string),))
+            peps = PEP.from_id_seq(
+                pep_number.string for pep_number in pep_numbers
+            )
             for pep in peps:
                 if isinstance(pep.resolver, self.__class__.__bases__[0]):
                     self.source = pep.resolver.transform(
