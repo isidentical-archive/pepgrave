@@ -93,8 +93,12 @@ def _clear_name(name):
 
 def _clear_name_by_prefix(name):
     index = 0
-    while not (current := name[index]).isalpha():
-        index += 1
+    for char in name:
+        if not (char.isalpha() or char in "()"):
+            index += 1
+        else:
+            break
+
     return name[:index], name[index:]
 
 
@@ -114,11 +118,16 @@ def pattern(*pattern_tokens):
         pattern_template_buffer = ""
         for index, pattern_part in enumerate(pattern_tokens):
             prefix, pattern_part = _clear_name_by_prefix(pattern_part)
-            if index == 0:
-                template = fr"({pattern_part}){prefix}"
-            else:
-                template = fr"(\s{pattern_part}){prefix}"
+            add_parenthesis = not (
+                pattern_part.startswith("(") and pattern_part.endswith(")")
+            )
+            if index == 0 or not add_parenthesis:
+                template = fr"{pattern_part}"
+            elif add_parenthesis:
+                template = fr"\s{pattern_part}"
 
+            if add_parenthesis:
+                template = fr"({template})"
             pattern_template_buffer += template
         pattern_template = re.compile(pattern_template_buffer, re.I)
 
@@ -223,7 +232,6 @@ class TokenTransformer:
 
         for pattern, visitor in patterns.items():
             slices = []
-            breakpoint()
             for match in finditer_overlapping(pattern, stream_tokens_text):
                 start_index, end_index = text_stream_searcher(*match.span())
                 slices.append(Slice(start_index, end_index))

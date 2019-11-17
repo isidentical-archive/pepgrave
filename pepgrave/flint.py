@@ -33,7 +33,7 @@ class _PatternFinder(ast.NodeVisitor):
             and self.unparse(node.items[0].context_expr.func)
         ):
             inital_node = node
-            if len(node.items[0].context_expr.args) != 1:
+            if len(node.items[0].context_expr.args) < 1:
                 raise SyntaxError(
                     "pepgrave.Magic should be called with 1 pep id"
                 )
@@ -42,7 +42,7 @@ class _PatternFinder(ast.NodeVisitor):
                 pep.value for pep in node.items[0].context_expr.args
             )
             for pep in peps:
-                if isinstance(pep.resolver, self.__class__.__bases__[0]):
+                if isinstance(pep.resolver, ASTTransformer):
                     node = self.fix(pep, node)
                     ast.copy_location(node, inital_node)
 
@@ -76,16 +76,16 @@ class FlintToken(TokenTransformer):
     # with magic.Magic(<peps>)
     # with pepgrave.magic.Magic(<peps>)
 
+    PARENS = "lpar", "*( number( comma number)*)", "rpar"
+
     def transform(self, source):
         self.source = source
         super().transform(source)
         return self.source
 
-    @pattern("name", "name", "lpar", "number", "rpar")
-    @pattern("name", "name", "dot", "name", "lpar", "number", "rpar")
-    @pattern(
-        "name", "name", "dot", "name", "dot", "name", "lpar", "number", "rpar"
-    )
+    @pattern("name", "name", *PARENS)
+    @pattern("name", "name", "dot", "name", *PARENS)
+    @pattern("name", "name", "dot", "name", "dot", "name", *PARENS)
     def context_finder(self, *tokens):
         tokens = iter(tokens)
         statement = next(tokens)
@@ -102,7 +102,7 @@ class FlintToken(TokenTransformer):
                 pep_number.string for pep_number in pep_numbers
             )
             for pep in peps:
-                if isinstance(pep.resolver, self.__class__.__bases__[0]):
+                if isinstance(pep.resolver, TokenTransformer):
                     self.source = pep.resolver.transform(
                         self.source
                     )  # TO-DO: transform only with's body

@@ -9,19 +9,19 @@ with magic.Magic(204):
     assert [:5] == [0, 1, 2, 3, 4]
     some_iterator = reversed([:3])
 
-with magic.Magic(212):
-    for i indexing e in some_iterator:
-        print(i, e)
-
-with magic.Magic(245):
-    interface Foo:
-        pass
-    print(Foo.__abstractmethods__)
-
 with magic.Magic(276):
     for i in 3:
         if i > 1:
             print(i)
+
+with magic.Magic(245, 212):
+    interface Foo:
+        pass
+    print(Foo.__abstractmethods__)
+
+
+    for i indexing e in some_iterator:
+        print(i, e)
 
 try:
     assert XX == 4
