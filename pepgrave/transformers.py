@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
+from pepgrave.untokenizer import untokenize
 
 token.EXACT_TOKEN_NAMES = dict(
     zip(token.EXACT_TOKEN_TYPES.values(), token.EXACT_TOKEN_TYPES.keys())
@@ -181,12 +182,10 @@ class TokenTransformer:
             pattern_slice.increase(offset)
             matching_tokens = stream_tokens[pattern_slice.s]
             tokens = visitor(*matching_tokens) or matching_tokens
-            tokens, matching_tokens, stream_tokens = self.set_tokens(
-                tokens, pattern_slice.s, matching_tokens, stream_tokens
-            )
             if len(tokens) > len(matching_tokens):
                 offset += len(tokens) - len(matching_tokens)
             stream_tokens[pattern_slice.s] = tokens
+
         return stream_tokens
 
     def _pattern_transformer_regex(self, patterns, stream_tokens):
@@ -288,7 +287,7 @@ class TokenTransformer:
         )
         stream_tokens = stream_tokens_buffer.copy()
 
-        source = tokenize.untokenize(stream_tokens)
+        source = untokenize(stream_tokens)
         return source
 
     def set_tokens(self, new_tokens, pattern, matching_tokens, all_tokens):

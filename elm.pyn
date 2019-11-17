@@ -1,0 +1,8 @@
+from pepgrave.magic import Magic
+
+with Magic(33333):
+  if True:
+    greet name =
+      name
+  print(greet("merhaba"))
+  assert greet("merhaba") == "merhaba"
