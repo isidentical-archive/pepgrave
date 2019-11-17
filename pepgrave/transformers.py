@@ -79,8 +79,14 @@ class ASTTransformer(ast.NodeTransformer):
 
 
 def _clear_name(name):
-    if not name.isalnum():
-        return name[0], name[1:]
+    if not name.isalpha():
+        index = -1
+        name_buffer = ""
+        while (current := name[index]).isalpha():
+            name_buffer += current
+            index -= 1
+        index += 1  # pretty hacky, fix it ASAP
+        return name[:index], name[index:]
     else:
         return "", name
 
@@ -106,7 +112,9 @@ def pattern(*pattern_tokens):
             pattern_part[1] not in token.tok_name.values()
             for pattern_part in pattern_template
         ):
-            raise ValueError("Invalid token name in pattern.")
+            raise ValueError(
+                f"Invalid token name in pattern: {pattern_template}"
+            )
 
         pattern_template_buffer = ""
         for index, pattern_part in enumerate(pattern_template):
