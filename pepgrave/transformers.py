@@ -128,7 +128,7 @@ def pattern(*pattern_tokens):
                 template = fr"\s{pattern_part}"
 
             if add_parenthesis:
-                template = fr"({template})"
+                template = fr"({template}){prefix}"
             pattern_template_buffer += template
         pattern_template = re.compile(pattern_template_buffer, re.I)
 
@@ -182,8 +182,7 @@ class TokenTransformer:
             pattern_slice.increase(offset)
             matching_tokens = stream_tokens[pattern_slice.s]
             tokens = visitor(*matching_tokens) or matching_tokens
-            if len(tokens) > len(matching_tokens):
-                offset += len(tokens) - len(matching_tokens)
+            offset += len(tokens) - len(matching_tokens)
             stream_tokens[pattern_slice.s] = tokens
 
         return stream_tokens

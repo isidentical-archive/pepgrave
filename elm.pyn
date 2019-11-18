@@ -1,8 +1,14 @@
 from pepgrave.magic import Magic
 
 with Magic(33333):
-  if True:
-    greet name =
-      name
-  print(greet("merhaba"))
-  assert greet("merhaba") == "merhaba"
+  greet name =
+    f"Hello, {name}!"
+
+
+  base_16_unpack arg =
+    int(arg, base=16)
+
+
+  print(greet("Batuhan"), base_16_unpack("0x0"))
+  assert greet("John Reese") == "Hello, John Reese!"
+  assert base_16_unpack("0xF") == 15
