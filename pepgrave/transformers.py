@@ -6,6 +6,7 @@ import re
 import token
 import tokenize
 from dataclasses import dataclass
+from enum import IntEnum
 from functools import wraps
 
 from pepgrave.context_resolver import Contexts, ContextVisitor, get_context
@@ -33,6 +34,16 @@ class Slice:
 class TextStreamTokenPosition:
     start: int
     end: int
+
+
+class Priority(IntEnum):
+    FIRST = 0
+    AVG = 1
+    LAST = 2
+
+    def __call__(self, func):
+        func.priority = self
+        return func
 
 
 def require_tree(func):
@@ -129,6 +140,9 @@ def pattern(*pattern_tokens):
 
             if add_parenthesis:
                 template = fr"({template}){prefix}"
+            else:
+                template = fr"{template}{prefix}"
+
             pattern_template_buffer += template
         pattern_template = re.compile(pattern_template_buffer, re.I)
 
@@ -139,6 +153,10 @@ def pattern(*pattern_tokens):
         return func
 
     return wrapper
+
+
+class PatternError(Exception):
+    pass
 
 
 class TokenTransformer:
@@ -210,25 +228,37 @@ class TokenTransformer:
                     and stream_tokens_position.end <= end
                 ):
                     matchings.append(index)
-            return (
-                matchings[0],
-                matchings[-1] + 1,
-            )  # hacky thing that make this work, please fix it ASAP
+            try:
+                return (
+                    matchings[0],
+                    matchings[-1] + 1,
+                )  # hacky thing that make this work, please fix it ASAP
+            except IndexError as exc:
+                raise PatternError from exc
+
+        def stream_tokens_reindex():
+            stream_tokens_positions.clear()
+            offset = 0
+            for index, stream_token_text in enumerate(
+                stream_tokens_text.split()
+            ):
+                stream_token_text_length = len(stream_token_text)
+                stream_tokens_positions[
+                    TextStreamTokenPosition(
+                        offset, offset + stream_token_text_length
+                    )
+                ] = index
+                offset += stream_token_text_length + 1  # filler (\s)
 
         stream_tokens_text = token_to_text(stream_tokens)
         stream_tokens_positions = {}
+        stream_tokens_reindex()
 
-        offset = 0
-        for index, stream_token_text in enumerate(stream_tokens_text.split()):
-            stream_token_text_length = len(stream_token_text)
-            stream_tokens_positions[
-                TextStreamTokenPosition(
-                    offset, offset + stream_token_text_length
-                )
-            ] = index
-            offset += stream_token_text_length + 1  # filler (\s)
-
-        for pattern, visitor in patterns.items():
+        patterns = sorted(
+            patterns.items(),
+            key=lambda kv: getattr(kv[1], "priority", Priority.AVG),
+        )
+        for pattern, visitor in patterns:
             slices = []
             for match in finditer_overlapping(pattern, stream_tokens_text):
                 start_index, end_index = text_stream_searcher(*match.span())
@@ -236,6 +266,7 @@ class TokenTransformer:
 
             stream_tokens = self._slice_replace(visitor, slices, stream_tokens)
             stream_tokens_text = token_to_text(stream_tokens)
+            stream_tokens_reindex()
 
         return stream_tokens
 

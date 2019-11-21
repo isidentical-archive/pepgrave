@@ -1,0 +1,8 @@
+from pepgrave import magic
+
+with magic.Magic(66666):
+    4.times do
+      puts " Ruby!"
+    end
+
+print("ruby")
