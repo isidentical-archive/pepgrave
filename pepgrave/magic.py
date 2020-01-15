@@ -41,7 +41,7 @@ def __internal_magic():
     main = __import__("__main__")
     main_tree = fix_file(open(main.__file__))
     exec(compile(main_tree, main.__file__, "exec"), main.__dict__)
-
+    exit()
 
 if INTERNAL_MAGIC:
     __internal_magic()
